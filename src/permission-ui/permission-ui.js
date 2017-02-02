@@ -52,7 +52,6 @@ function run($transitions, PermTransitionProperties, PermStateAuthorization, Per
     return PermStateAuthorization
       .authorizeByPermissionMap(statePermissionMap)
       .catch(function(rejectedPermission) {
-        console.log('handleUnauthorizedState');
         return handleUnauthorizedState(rejectedPermission, statePermissionMap);
       });
 
