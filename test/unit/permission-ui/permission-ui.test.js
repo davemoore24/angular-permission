@@ -6,7 +6,6 @@ describe('permission.ui', function () {
     var $state;
     var $stateProvider;
     var PermPermissionStore;
-    var PermTransitionEvents;
     var PermTransitionProperties;
     var PermStateAuthorization;
 
@@ -21,7 +20,6 @@ describe('permission.ui', function () {
         $state = $injector.get('$state');
         $rootScope = $injector.get('$rootScope');
         PermPermissionStore = $injector.get('PermPermissionStore');
-        PermTransitionEvents = $injector.get('PermTransitionEvents');
         PermTransitionProperties = $injector.get('PermTransitionProperties');
         PermStateAuthorization = $injector.get('PermStateAuthorization');
       });
@@ -69,8 +67,8 @@ describe('permission.ui', function () {
         // GIVEN
         // WHEN
         // THEN
+        console.log($state.current);
         expect($state.current.$$permissionState).toBeDefined();
-        expect($state.current.$$isAuthorizationFinished).toBeDefined();
       });
     });
 
@@ -90,41 +88,8 @@ describe('permission.ui', function () {
           expect(PermTransitionProperties.options).toBeDefined();
         });
 
-        it('should not set $$isAuthorizationFinished flag when authorization is not finished', function () {
-          // GIVEN
-          $rootScope.$on('$stateChangePermissionStart', function (event) {
-            event.preventDefault();
-          });
-
-          // WHEN
-          $state.go('accepted');
-          $rootScope.$digest();
-
-          // THEN
-          expect(PermTransitionProperties.toState.$$isAuthorizationFinished).toBeFalsy();
-        });
-
-        it('should not start authorizing when $stateChangePermissionStart was prevented', function () {
-          // GIVEN
-          $rootScope.$on('$stateChangePermissionStart', function (event) {
-            event.preventDefault();
-          });
-
-          spyOn(PermTransitionEvents, 'broadcastPermissionStartEvent');
-
-          // WHEN
-          $state.go('accepted');
-          $rootScope.$digest();
-
-          // THEN
-          expect($state.current.name).toBe('accepted');
-
-          expect(PermTransitionEvents.broadcastPermissionStartEvent).not.toHaveBeenCalled();
-        });
-
         it('should handle unauthorized state access', function () {
           // GIVEN
-          spyOn(PermTransitionEvents, 'broadcastPermissionDeniedEvent');
           spyOn(PermStateAuthorization, 'authorizeByPermissionMap').and.callThrough();
 
           // WHEN
@@ -134,12 +99,9 @@ describe('permission.ui', function () {
           // THEN
           expect($state.current.name).toBe('redirected');
           expect(PermStateAuthorization.authorizeByPermissionMap).toHaveBeenCalled();
-          expect(PermTransitionEvents.broadcastPermissionDeniedEvent).toHaveBeenCalled();
         });
 
         it('should handle authorized state access', function () {
-          // GIVEN
-          spyOn(PermTransitionEvents, 'broadcastPermissionAcceptedEvent');
           spyOn(PermStateAuthorization, 'authorizeByPermissionMap').and.callThrough();
 
           // WHEN
@@ -149,7 +111,6 @@ describe('permission.ui', function () {
           // THEN
           expect($state.current.name).toBe('accepted');
           expect(PermStateAuthorization.authorizeByPermissionMap).toHaveBeenCalled();
-          expect(PermTransitionEvents.broadcastPermissionAcceptedEvent).toHaveBeenCalled();
         });
 
         it('should honor params and options passed to "transitionTo" or "go" function', function () {
@@ -169,12 +130,12 @@ describe('permission.ui', function () {
             });
 
           // WHEN
-          $state.go('acceptedWithParamsAndOptions', {param: 'param'}, {relative: true});
+          $state.go('acceptedWithParamsAndOptions', {param: 'param'}, {reload: true});
           $rootScope.$apply();
 
           // THEN
           expect($state.go).toHaveBeenCalledWith('acceptedWithParamsAndOptions', {param: 'param'}, {
-            location: true, inherit: true, relative: true, notify: false, reload: false, $retry: false
+            reload: true
           });
         });
       });
