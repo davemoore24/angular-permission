@@ -54,13 +54,8 @@
     'ngInject';
 
     $transitions.onStart({}, function (transition) {
-      var _toState = transition.to();
-      var _toParams = transition.params('to');
-      var _fromState = transition.from();
-      var _fromParams = transition.params('from');
-      var _options = transition.options();
 
-      setTransitionProperties();
+      setTransitionProperties(transition);
 
       var statePermissionMap = new PermStatePermissionMap(PermTransitionProperties.toState);
 
@@ -92,12 +87,12 @@
        * @method
        * @private
        */
-      function setTransitionProperties() {
-        PermTransitionProperties.toState = _toState;
-        PermTransitionProperties.toParams = _toParams;
-        PermTransitionProperties.fromState = _fromState;
-        PermTransitionProperties.fromParams = _fromParams;
-        PermTransitionProperties.options = _options;
+      function setTransitionProperties(transition) {
+        PermTransitionProperties.toState = transition.to();
+        PermTransitionProperties.toParams = transition.params('to');
+        PermTransitionProperties.fromState = transition.from();
+        PermTransitionProperties.fromParams = transition.params('from');
+        PermTransitionProperties.options = transition.options();
       }
     });
   }
