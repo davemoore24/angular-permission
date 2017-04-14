@@ -1,7 +1,7 @@
 /**
  * angular-permission-ui
  * Extension module of angular-permission for access control within ui-router
- * @version v5.1.1 - 2017-01-31
+ * @version v5.2.1 - 2017-02-02
  * @link https://github.com/Narzerus/angular-permission
  * @author Rafael Vidaurre <narzerus@gmail.com> (http://www.rafaelvidaurre.com), Blazej Krysiak <blazej.krysiak@gmail.com>
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -18,8 +18,7 @@
    * @param $stateProvider {Object}
    */
   config.$inject = ['$stateProvider'];
-  run.$inject = ['$rootScope', '$state', 'PermTransitionProperties', 'PermTransitionEvents', 'PermStateAuthorization', 'PermStatePermissionMap'];
-  PermTransitionEvents.$inject = ['$delegate', '$rootScope', 'PermTransitionProperties', 'PermTransitionEventNames'];
+  run.$inject = ['$transitions', 'PermTransitionProperties', 'PermStateAuthorization', 'PermStatePermissionMap'];
   PermStateAuthorization.$inject = ['$q', '$state', 'PermStatePermissionMap'];
   PermStatePermissionMap.$inject = ['PermPermissionMap'];
 
@@ -46,104 +45,25 @@
   }
 
   /**
-   * @param $rootScope {Object}
-   * @param $state {Object}
+   * @param $transitions {object}
    * @param PermTransitionProperties {permission.PermTransitionProperties}
-   * @param PermTransitionEvents {permission.ui.PermTransitionEvents}
    * @param PermStateAuthorization {permission.ui.PermStateAuthorization}
    * @param PermStatePermissionMap {permission.ui.PermStatePermissionMap}
    */
-  function run($rootScope, $state, PermTransitionProperties, PermTransitionEvents, PermStateAuthorization, PermStatePermissionMap) {
+  function run($transitions, PermTransitionProperties, PermStateAuthorization, PermStatePermissionMap) {
     'ngInject';
 
-    /**
-     * State transition interceptor
-     */
-    $rootScope.$on('$stateChangeStart', function (event, toState, toParams, fromState, fromParams, options) {
+    $transitions.onStart({}, function (transition) {
 
-      if (!isAuthorizationFinished()) {
-        setStateAuthorizationStatus(true);
-        setTransitionProperties();
+      setTransitionProperties(transition);
 
-        if (!PermTransitionEvents.areEventsDefaultPrevented()) {
-          PermTransitionEvents.broadcastPermissionStartEvent();
+      var statePermissionMap = new PermStatePermissionMap(PermTransitionProperties.toState);
 
-          event.preventDefault();
-          var statePermissionMap = new PermStatePermissionMap(PermTransitionProperties.toState);
-
-          PermStateAuthorization
-            .authorizeByPermissionMap(statePermissionMap)
-            .then(function () {
-              handleAuthorizedState();
-            })
-            .catch(function (rejectedPermission) {
-              handleUnauthorizedState(rejectedPermission, statePermissionMap);
-            })
-            .finally(function () {
-              setStateAuthorizationStatus(false);
-            });
-        } else {
-          setStateAuthorizationStatus(false);
-        }
-      }
-
-      /**
-       * Updates values of `PermTransitionProperties` holder object
-       * @method
-       * @private
-       */
-      function setTransitionProperties() {
-        PermTransitionProperties.toState = toState;
-        PermTransitionProperties.toParams = toParams;
-        PermTransitionProperties.fromState = fromState;
-        PermTransitionProperties.fromParams = fromParams;
-        PermTransitionProperties.options = options;
-      }
-
-      /**
-       * Sets internal state `$$finishedAuthorization` variable to prevent looping
-       * @method
-       * @private
-       *
-       * @param status {boolean} When true authorization has been already preceded
-       */
-      function setStateAuthorizationStatus(status) {
-        angular.extend(toState, {
-          '$$isAuthorizationFinished': status
+      return PermStateAuthorization
+        .authorizeByPermissionMap(statePermissionMap)
+        .catch(function (rejectedPermission) {
+          return handleUnauthorizedState(rejectedPermission, statePermissionMap);
         });
-      }
-
-      /**
-       * Checks if state has been already checked for authorization
-       * @method
-       * @private
-       *
-       * @returns {boolean}
-       */
-      function isAuthorizationFinished() {
-        return toState.$$isAuthorizationFinished;
-      }
-
-      /**
-       * Handles redirection for authorized access
-       * @method
-       * @private
-       */
-      function handleAuthorizedState() {
-        PermTransitionEvents.broadcastPermissionAcceptedEvent();
-
-        // Overwrite notify option to broadcast it later
-        var transitionOptions = angular.extend({}, PermTransitionProperties.options, {
-          notify: false,
-          location: true
-        });
-
-        $state
-          .go(PermTransitionProperties.toState.name, PermTransitionProperties.toParams, transitionOptions)
-          .then(function () {
-            PermTransitionEvents.broadcastStateChangeSuccessEvent();
-          });
-      }
 
       /**
        * Handles redirection for unauthorized access
@@ -154,13 +74,25 @@
        * @param statePermissionMap {permission.ui.PermPermissionMap} State permission map
        */
       function handleUnauthorizedState(rejectedPermission, statePermissionMap) {
-        PermTransitionEvents.broadcastPermissionDeniedEvent();
-
-        statePermissionMap
+        return statePermissionMap
           .resolveRedirectState(rejectedPermission)
           .then(function (redirect) {
-            $state.go(redirect.state, redirect.params, redirect.options);
+            return transition.router.stateService
+              .target(redirect.state, redirect.params, redirect.options);
           });
+      }
+
+      /**
+       * Updates values of `PermTransitionProperties` holder object
+       * @method
+       * @private
+       */
+      function setTransitionProperties(transition) {
+        PermTransitionProperties.toState = transition.to();
+        PermTransitionProperties.toParams = transition.params('to');
+        PermTransitionProperties.fromState = transition.from();
+        PermTransitionProperties.fromParams = transition.params('from');
+        PermTransitionProperties.options = transition.options();
       }
     });
   }
@@ -173,131 +105,6 @@
   if (typeof module !== 'undefined' && typeof exports !== 'undefined' && module.exports === exports) {
     module.exports = uiPermission.name;
   }
-
-
-  /**
-   * Service responsible for managing and emitting events
-   * @name permission.ui.PermTransitionEvents
-   *
-   * @extends permission.PermTransitionEvents
-   *
-   * @param $delegate {Object} Parent instance being extended
-   * @param $rootScope {Object} Top-level angular scope
-   * @param PermTransitionProperties {permission.PermTransitionProperties} Helper storing transition parameters
-   * @param PermTransitionEventNames {permission.ui.PermTransitionEventNames} Constant storing event names
-   */
-  function PermTransitionEvents($delegate, $rootScope, PermTransitionProperties, PermTransitionEventNames) {
-    'ngInject';
-
-    $delegate.areEventsDefaultPrevented = areEventsDefaultPrevented;
-    $delegate.broadcastStateChangeSuccessEvent = broadcastStateChangeSuccessEvent;
-    $delegate.broadcastPermissionStartEvent = broadcastPermissionStartEvent;
-    $delegate.broadcastPermissionAcceptedEvent = broadcastPermissionAcceptedEvent;
-    $delegate.broadcastPermissionDeniedEvent = broadcastPermissionDeniedEvent;
-
-    /**
-     * Checks if state events are not prevented by default
-     * @methodOf permission.ui.PermTransitionEvents
-     *
-     * @returns {boolean}
-     */
-    function areEventsDefaultPrevented() {
-      return isStateChangePermissionStartDefaultPrevented() || isStateChangeStartDefaultPrevented();
-    }
-
-    /**
-     * Broadcasts "$stateChangePermissionStart" event from $rootScope
-     * @methodOf permission.ui.PermTransitionEvents
-     */
-    function broadcastPermissionStartEvent() {
-      $rootScope.$broadcast(PermTransitionEventNames.permissionStart,
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.options);
-    }
-
-    /**
-     * Broadcasts "$stateChangePermissionAccepted" event from $rootScope
-     * @methodOf permission.ui.PermTransitionEvents
-     */
-    function broadcastPermissionAcceptedEvent() {
-      $rootScope.$broadcast(PermTransitionEventNames.permissionAccepted,
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.options);
-    }
-
-    /**
-     * Broadcasts "$tateChangePermissionDenied" event from $rootScope
-     * @methodOf permission.ui.PermTransitionEvents
-     */
-    function broadcastPermissionDeniedEvent() {
-      $rootScope.$broadcast(PermTransitionEventNames.permissionDenies,
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.options);
-    }
-
-    /**
-     * Broadcasts "$stateChangeSuccess" event from $rootScope
-     * @methodOf permission.ui.PermTransitionEvents
-     */
-    function broadcastStateChangeSuccessEvent() {
-      $rootScope.$broadcast('$stateChangeSuccess',
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.fromState, PermTransitionProperties.fromParams);
-    }
-
-    /**
-     * Checks if event $stateChangePermissionStart hasn't been disabled by default
-     * @methodOf permission.ui.PermTransitionEvents
-     * @private
-     *
-     * @returns {boolean}
-     */
-    function isStateChangePermissionStartDefaultPrevented() {
-      return $rootScope.$broadcast(PermTransitionEventNames.permissionStart,
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.options).defaultPrevented;
-    }
-
-    /**
-     * Checks if event $stateChangeStart hasn't been disabled by default
-     * @methodOf permission.ui.PermTransitionEvents
-     * @private
-     *
-     * @returns {boolean}
-     */
-    function isStateChangeStartDefaultPrevented() {
-      return $rootScope.$broadcast('$stateChangeStart',
-        PermTransitionProperties.toState, PermTransitionProperties.toParams,
-        PermTransitionProperties.fromState, PermTransitionProperties.fromParams,
-        PermTransitionProperties.options).defaultPrevented;
-    }
-
-    return $delegate;
-  }
-
-  angular
-    .module('permission.ui')
-    .decorator('PermTransitionEvents', PermTransitionEvents);
-
-  /**
-   * Constant storing event names for ng-route
-   * @name permission.ui.PermTransitionEventNames
-   *
-   * @type {Object.<String,Object>}
-   *
-   * @property permissionStart {String} Event name called when started checking for permissions
-   * @property permissionAccepted {String} Event name called when authorized
-   * @property permissionDenies {String} Event name called when unauthorized
-   */
-  var PermTransitionEventNames = {
-    permissionStart: '$stateChangePermissionStart',
-    permissionAccepted: '$stateChangePermissionAccepted',
-    permissionDenies: '$stateChangePermissionDenied'
-  };
-
-  angular
-    .module('permission.ui')
-    .value('PermTransitionEventNames', PermTransitionEventNames);
 
 
   /**
